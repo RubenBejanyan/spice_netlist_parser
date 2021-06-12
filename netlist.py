@@ -1,20 +1,25 @@
 import copy
+import os
+from typing import Union, List
 
 
 class Device:
-    def set_attribute(self, attribute, value):
+
+    pos_attributes = {'name', 'PLUS', 'MINUS', 'Model', 'S', 'D', 'G', 'B'}
+
+    def set_attribute(self, attribute: str, value: str) -> None:
         self.__setattr__(attribute, value)
 
-    def __repr__(self):
-        info = [v if v.isalpha() or k == 'name' else f'{k}={v}' for k, v in self.__dict__.items()]
+    def __repr__(self) -> str:
+        info = [v if v.isalpha() or k in self.pos_attributes else f'{k}={v}' for k, v in self.__dict__.items()]
         return f"{type(self).__name__}: {' '.join(info)}"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.__repr__()
 
 
 class Diode(Device):
-    def __init__(self, name, plus, minus, model, **kwargs):
+    def __init__(self, name: str, plus: str, minus: str, model: str, **kwargs: str):
         self.name = name
         self.PLUS = plus
         self.MINUS = minus
@@ -25,7 +30,7 @@ class Diode(Device):
 
 
 class Transistor(Device):
-    def __init__(self, name, source, drain, gate, base, model, **kwargs):
+    def __init__(self, name: str, source: str, drain: str, gate: str, base: str, model: str, **kwargs: str):
         self.name = name
         self.S = source
         self.D = drain
@@ -37,11 +42,38 @@ class Transistor(Device):
             self.__setattr__(k, v)
 
 
-class NetList:
+class Cell:
+    def __init__(self, name: str, description: str, equation: str, pin_order: List[str],
+                 instances: List[Union[Diode, Transistor]]):
+        self.name = name
+        self.description = description
+        self.equation = equation
+        self.pin_order = pin_order
+        self.instances = copy.deepcopy(instances)
+
+    def get_pin_order(self) -> str:
+        return ' '.join(self.pin_order)
+
+    def set_pin_order(self, pin_order: str) -> None:
+        self.pin_order = pin_order.split()
+
+    def get_all_instances(self) -> str:
+        return '\n'.join(map(str, self.instances))
+
+    def get_instance(self, instance_name: str) -> Union[Diode, Transistor]:
+        for instance in self.instances:
+            if instance.name == instance_name:
+                return instance
+
+    def __repr__(self) -> str:
+        return f'{self.name} (Description: {self.description}, Equation: {self.equation})'
+
+
+class Netlist:
     def __init__(self):
         self.cell_list = []
 
-    def read(self, path_to_file):
+    def read(self, path_to_file: Union[str, os.PathLike]) -> None:
         instances = []
         with open(path_to_file, 'r') as nl:
             lines = nl.readlines()
@@ -56,16 +88,14 @@ class NetList:
                     cell_name = cell_info[1]
                     pin_order = cell_info[2:]
                 elif line.startswith('M'):
-                    _args, _kwargs = self.read_transistor(line)
-                    instances.append(Transistor(*_args, **_kwargs))
+                    instances.append(self.read_transistor(line))
                 elif line.startswith('D'):
-                    _args, _kwargs = self.read_diode(line)
-                    instances.append(Diode(*_args, **_kwargs))
+                    instances.append(self.read_diode(line))
                 elif line.startswith('.ends'):
                     self.cell_list.append(Cell(cell_name, description, equation, pin_order, instances))
                     instances.clear()
 
-    def write(self, path_to_file):
+    def write(self, path_to_file: Union[str, os.PathLike]) -> None:
         lines = []
         for cell in self.cell_list:
             lines.append(f'*      Description : {cell.description}\n')
@@ -77,71 +107,40 @@ class NetList:
         with open(path_to_file, 'w') as nl:
             nl.writelines(lines)
 
-    def get_cell(self, cell_name):
+    def get_cell(self, cell_name: str) -> Cell:
         for cell in self.cell_list:
             if cell.name == cell_name:
                 return cell
 
-    def get_all_cells(self):
+    def get_all_cells(self) -> List[Cell]:
         return self.cell_list
 
     @staticmethod
-    def read_transistor(line_with_transistor_params):
+    def read_transistor(line_with_transistor_params: str) -> Transistor:
         params = line_with_transistor_params.split()
         pos_params = params[:6]
         kw_params = {}
         for elem in params[6:]:
             k, v = elem.split('=')
             kw_params[k] = v
-        return pos_params, kw_params
+        return Transistor(*pos_params, **kw_params)
 
     @staticmethod
-    def read_diode(line_with_diode_params):
+    def read_diode(line_with_diode_params: str) -> Diode:
         params = line_with_diode_params.split()
         pos_params = params[:4]
         kw_params = {}
         for elem in params[4:]:
             k, v = elem.split('=')
             kw_params[k] = v
-        return pos_params, kw_params
-
-
-class Cell:
-    def __init__(self, name, description, equation, pin_order, instances):
-        self.name = name
-        self.description = description
-        self.equation = equation
-        self.pin_order = pin_order
-        self.instances = copy.deepcopy(instances)
-
-    def get_pin_order(self):
-        return ' '.join(self.pin_order)
-
-    def set_pin_order(self, pin_order):
-        self.pin_order = pin_order.split()
-
-    def get_all_instances(self):
-        return '\n'.join(map(str, self.instances))
-
-    def get_instance(self, instance_name):
-        for instance in self.instances:
-            if instance.name == instance_name:
-                return instance
-
-    def __repr__(self):
-        return f'{self.name} (Description: {self.description}, Equation: {self.equation})'
+        return Diode(*pos_params, **kw_params)
 
 
 if __name__ == '__main__':
-    net_obj = NetList()
+    net_obj = Netlist()
     net_obj.read('netlist_example.txt')
     cell = net_obj.get_cell('INV')
     print(cell.get_pin_order())
     cell.set_pin_order('vdd vss vbp vbn x a')
     print(cell.get_pin_order())
-    # print(cell.get_all_instances())
-    instance = cell.get_instance('MNA')
-    print(instance)
-    instance.set_attribute('S', 'newvdd')
-    print(instance)
-    net_obj.write('test_new_netlist.txt')
+    print(cell.get_all_instances())
