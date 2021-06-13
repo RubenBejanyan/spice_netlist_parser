@@ -19,7 +19,7 @@ class Device:
         self.__setattr__(attribute_name, attribute_value)
 
     def __repr__(self) -> str:
-        info = [v if v.isalpha() or k in self.positional_attributes else f'{k}={v}' for k, v in self.__dict__.items()]
+        info = [v if k in self.positional_attributes else f'{k}={v}' for k, v in self.__dict__.items()]
         return f"{type(self).__name__}: {' '.join(info)}"
 
     def __str__(self) -> str:
@@ -65,23 +65,25 @@ class Cell:
     def get_pin_order(self) -> str:
         return ' '.join(self.pin_order)
 
-    def set_pin_order(self, pin_order: str) -> None:
+    def set_pin_order(self, new_pin_order: str) -> None:
 
-        if not isinstance(pin_order, str):
-            raise TypeError(f'Pin order must be str, {type(pin_order).__name__} given')
+        if not isinstance(new_pin_order, str):
+            raise TypeError(f'Pin order must be str, {type(new_pin_order).__name__} given')
 
-        pin_order = pin_order.split()
+        new_pin_order = new_pin_order.split()
+
+        # in this part I create valid_pins set where i collect all pins from cell devices,
+        # because I think pin must exist at first
         valid_pins = set()
-
         for _instance in self.instances:
             for pin in _instance.__dict__:
                 if pin in Device.positional_attributes.difference({'name', 'Model'}):
                     valid_pins.add(getattr(_instance, pin))
 
-        if set(pin_order).issubset(valid_pins):
-            self.pin_order = pin_order
+        if set(new_pin_order).issubset(valid_pins):
+            self.pin_order = new_pin_order
         else:
-            raise Exception(f'Pin(s) {set(pin_order).difference(valid_pins)} not exist')
+            raise Exception(f'Pin(s) {set(new_pin_order).difference(valid_pins)} not exist')
 
     def get_all_instances(self) -> str:
         return '\n'.join(map(str, self.instances))
@@ -110,15 +112,19 @@ class Netlist:
     def read(self, path_to_file: Union[str, os.PathLike]) -> None:
 
         instances = []
+        # this dict needed to check netlist text style, in every block I change value to True
         valid_spice_netlist = dict.fromkeys(['description', 'equation', 'subckt', 'instances'], False)
 
         with open(path_to_file, 'r') as nl:
             lines = nl.readlines()
 
             for line in lines:
+                # this flag needed to check '.ends' at the end of the last cell
                 finished = False
 
                 if line.startswith('*'):
+                    # here I am checking if subckt or instances is already True
+                    # this means that last cell does not have '.ends' at the end
                     if valid_spice_netlist['subckt'] or valid_spice_netlist['instances']:
                         raise Exception(f'"{path_to_file}" file have other text style,'
                                         f' no ".ends" at the end of the cell "{cell_name}"')
@@ -149,6 +155,7 @@ class Netlist:
                         raise Exception(f'"{path_to_file}" file have other text style,'
                                         f' please check {[k for k, v in valid_spice_netlist.items() if v == False]}')
                     self.cell_list.append(Cell(cell_name, description, equation, pin_order, instances))
+                    # reset the values of instances and valid_spice_netlist in case if netlist has more then one cell
                     instances.clear()
                     valid_spice_netlist = {key: False for key in valid_spice_netlist}
 
@@ -183,7 +190,7 @@ class Netlist:
         for _cell in self.cell_list:
             if _cell.name == cell_name:
                 return _cell
-            
+
         raise NameError(f'Netlist has no cell "{cell_name}". Choose from: '
                         f'{[getattr(_, "name") for _ in self.cell_list]}')
 
@@ -218,9 +225,9 @@ if __name__ == '__main__':
     print(cell.get_pin_order())
     cell.set_pin_order('VSS VDD VBP VBN X A')
     print(cell.get_pin_order())
-    # # print(cell.get_all_instances())
-    # instance = cell.get_instance('MNA')
-    # print(instance)
-    # instance.set_attribute('S', 'new_vdd')
-    # print(instance)
-    # net_obj.write('test_new_netlist.txt')
+    # print(cell.get_all_instances())
+    instance = cell.get_instance('MNA')
+    print(instance)
+    instance.set_attribute('S', 'new_vdd')
+    print(instance)
+    net_obj.write('test_new_netlist.txt')
